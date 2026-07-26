@@ -96,8 +96,10 @@ if [[ -d "$ROOT_DIR/Localizations" ]]; then
   cp -R "$ROOT_DIR/Localizations/"*.lproj "$RESOURCES_DIR/"
 fi
 
-# PRO_EDITION=1 이면 테스트용 Pro 잠금해제 빌드 (스토어 배포판은 사용 금지)
-if [[ "${PRO_EDITION:-0}" == "1" ]]; then
+# 이 스크립트의 산출물은 NAS/직접 배포 전용이며 스토어 제출에는 절대 쓰이지
+# 않는다(스토어용은 pack_mas.sh). 그래서 기본값을 Pro 잠금해제로 둔다.
+# PRO_EDITION=0 으로 실행하면 무료 티어 제한이 걸린 빌드를 만들 수 있다.
+if [[ "${PRO_EDITION:-1}" == "1" ]]; then
   PRO_EDITION_ENTRY='    <key>PSSProUnlocked</key>
     <true/>'
 else
