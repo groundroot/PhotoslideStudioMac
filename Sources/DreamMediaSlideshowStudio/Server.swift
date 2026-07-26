@@ -43,6 +43,10 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
         _ = projectStylesheetData
         _ = projectScriptData
 
+        DispatchQueue.global(qos: .utility).async {
+            ResizedImageCache.pruneIfNeeded()
+        }
+
         do {
             let nwPort = NWEndpoint.Port(rawValue: port) ?? 8787
             let listener = try NWListener(using: .tcp, on: nwPort)
@@ -451,6 +455,19 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
         let requestedRelativePath = relativeSegments.joined(separator: "/")
         guard let matchedURL = MediaLibrary.fileURL(for: requestedRelativePath, event: event) else {
             return .text("Not Found", status: "404 Not Found")
+        }
+
+        // 사진은 장변 2560 JPEG으로 다운스케일 서빙 — 원본(8~12MB)을 그대로
+        // 보내면 브라우저가 매 슬라이드마다 풀 디코딩해 인텔맥에서 히칭이
+        // 생긴다. Range 요청은 원본 바이트 오프셋 기준이라 제외한다.
+        if request.headers["range"] == nil,
+           let resizedURL = ResizedImageCache.resizedFileURL(for: matchedURL) {
+            return fileResponse(
+                fileURL: resizedURL,
+                request: request,
+                contentType: "image/jpeg",
+                cacheControl: "public, max-age=3600"
+            )
         }
 
         return fileResponse(
