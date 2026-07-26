@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox: Mac App Store 제출 필수 -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- 내장 LAN HTTP 서버(OptiSigns용 슬라이드쇼 제공) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- 클라우드 공유링크 해석, WKWebView 미리보기 등 아웃바운드 연결 -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- 사용자가 직접 고른 미디어 폴더/로고/오디오/폰트 파일 읽기·쓰기 -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- 선택한 폴더 접근을 재실행 후에도 유지하기 위한 app-scoped bookmarks -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+</dict>
+</plist>

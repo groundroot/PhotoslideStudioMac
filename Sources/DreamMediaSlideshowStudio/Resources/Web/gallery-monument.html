@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dream Media Slideshow</title>
+  <link rel="stylesheet" href="/static/gallery-monument.css">
+</head>
+<body data-project-slug="__PROJECT_SLUG__">
+  <main class="slideshow">
+    <div class="slideshow__viewport" id="viewport">
+      <div class="slideshow__track">
+        <article class="slide" id="slideA" aria-hidden="true">
+          <div class="slide__frame">
+            <img class="slide__image slide__media" alt="" decoding="async">
+            <video class="slide__video slide__media" muted playsinline preload="auto"></video>
+          </div>
+        </article>
+        <article class="slide" id="slideB" aria-hidden="true">
+          <div class="slide__frame">
+            <img class="slide__image slide__media" alt="" decoding="async">
+            <video class="slide__video slide__media" muted playsinline preload="auto"></video>
+          </div>
+        </article>
+      </div>
+
+      <canvas class="gpu-transition-layer" id="gpuTransitionLayer" aria-hidden="true"></canvas>
+
+      <div class="fx fx--particles" id="fxParticles" aria-hidden="true"></div>
+      <div class="fx fx--light-leaks" id="fxLightLeaks" aria-hidden="true"></div>
+      <div class="fx fx--glass-orbs" id="fxGlassOrbs" aria-hidden="true"></div>
+      <div class="fx fx--gradient-mesh" id="fxGradientMesh" aria-hidden="true"></div>
+      <div class="fx fx--paper-grain" id="fxPaperGrain" aria-hidden="true"></div>
+      <div class="fx fx--prism-lines" id="fxPrismLines" aria-hidden="true"></div>
+
+      <div class="background-audio" aria-hidden="true">
+        <audio id="backgroundAudio" preload="auto" loop></audio>
+        <video id="backgroundAudioVideo" preload="auto" loop playsinline></video>
+      </div>
+
+      <button class="fullscreen-toggle" id="fullscreenToggle" type="button" aria-label="전체화면 전환">
+        전체화면
+      </button>
+
+      <section class="logo-layer logo-layer--topRight" id="logoLayer" hidden>
+        <img class="logo-layer__image" id="logoImage" alt="">
+      </section>
+
+      <div class="focus-debug" id="focusDebug" hidden aria-hidden="true">
+        <div class="focus-debug__dot"></div>
+        <div class="focus-debug__label" id="focusDebugLabel">포커스</div>
+      </div>
+
+      <section class="overlay overlay--bottomLeft" id="overlay" data-background-effect="blur-bar">
+        <div class="overlay__inner">
+          <h1 class="overlay__title" id="overlayTitle"></h1>
+          <p class="overlay__subtitle" id="overlaySubtitle"></p>
+        </div>
+      </section>
+
+      <section class="youtube-layer" id="youtubeLayer" hidden>
+        <div id="youtubePlayerHost"></div>
+      </section>
+
+      <section class="empty-state" id="emptyState" hidden>
+        <div class="empty-state__card">
+          <p class="empty-state__eyebrow" id="emptyStateEyebrow">MEDIA SLIDESHOW</p>
+          <h2 id="emptyStateTitle">선택한 사진 폴더에 이미지를 추가해주세요.</h2>
+          <p id="emptyStateSubtitle">폴더 안 이미지는 랜덤 순서로 전체 화면 슬라이드쇼로 재생됩니다.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/webgl-transition-engine.js"></script>
+  <script src="/static/gallery-monument.js"></script>
+</body>
+</html>
