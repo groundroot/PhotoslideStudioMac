@@ -2,8 +2,10 @@
   color-scheme: light;
   --transition-ms: 2600ms;
   --motion-ms: 8000ms;
-  --overlay-padding-x: clamp(2rem, 5vw, 5rem);
-  --overlay-padding-y: clamp(2rem, 5vh, 4rem);
+  /* 텍스트/로고 위치 프리셋(좌우·상단·하단)이 화면의 중앙 90% 영역(각 변 5%
+     여백) 가이드라인에 정확히 놓이도록 한다. */
+  --overlay-padding-x: 5vw;
+  --overlay-padding-y: 5vh;
   --title-color: #ffffff;
   --subtitle-color: #ffffff;
   --title-size: 50px;
