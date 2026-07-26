@@ -874,8 +874,16 @@ struct ProjectWorkspaceView: View {
 
     private var textOffsetFields: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SliderRow(title: String(localized: "가로 이동"), value: eventBinding(\.overlayOffsetX, default: 0), range: -400...400, suffix: "px")
-            SliderRow(title: String(localized: "세로 이동"), value: eventBinding(\.overlayOffsetY, default: 0), range: -400...400, suffix: "px")
+            HStack(spacing: 8) {
+                SliderRow(title: String(localized: "가로 이동"), value: eventBinding(\.overlayOffsetX, default: 0), range: -400...400, step: 0.5, suffix: "px")
+                Stepper("", value: eventBinding(\.overlayOffsetX, default: 0), in: -400...400, step: 0.5)
+                    .labelsHidden()
+            }
+            HStack(spacing: 8) {
+                SliderRow(title: String(localized: "세로 이동"), value: eventBinding(\.overlayOffsetY, default: 0), range: -400...400, step: 0.5, suffix: "px")
+                Stepper("", value: eventBinding(\.overlayOffsetY, default: 0), in: -400...400, step: 0.5)
+                    .labelsHidden()
+            }
         }
     }
 
@@ -1387,7 +1395,11 @@ struct ProjectWorkspaceView: View {
 
                 Group {
                     if previewEnabled, let appPreviewURL {
-                        WebPreviewView(url: appPreviewURL, reloadToken: previewVersion)
+                        WebPreviewView(
+                            url: appPreviewURL,
+                            reloadToken: previewVersion,
+                            referenceSize: previewPortrait ? CGSize(width: 1080, height: 1920) : CGSize(width: 1920, height: 1080)
+                        )
                     } else {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("프리뷰가 꺼져 있습니다.")
@@ -3097,10 +3109,49 @@ private struct SoftControlButtonStyle: ButtonStyle {
 struct WebPreviewView: NSViewRepresentable {
     let url: URL
     let reloadToken: String
+    // 실제 서명 화면(예: 1920x1080 TV/OptiSigns)과 동일한 뷰포트 너비로 웹뷰를
+    // 렌더링한 뒤 프리뷰 패널 크기에 맞춰 시각적으로만 축소한다. 웹뷰 프레임
+    // 자체를 패널 크기로 줄이면 타이틀/서브타이틀 등 고정 px 폰트 크기가
+    // 실제 사파리 화면보다 훨씬 크게 보여, 프리뷰와 실제 출력의 폰트 비율이
+    // 어긋난다.
+    var referenceSize: CGSize = CGSize(width: 1920, height: 1080)
 
     final class PassthroughPreviewWebView: WKWebView {
         override func scrollWheel(with event: NSEvent) {
             nextResponder?.scrollWheel(with: event)
+        }
+    }
+
+    final class ScalingContainerView: NSView {
+        let webView: WKWebView
+        var referenceSize: CGSize = CGSize(width: 1920, height: 1080) {
+            didSet { needsLayout = true }
+        }
+
+        init(webView: WKWebView) {
+            self.webView = webView
+            super.init(frame: .zero)
+            wantsLayer = true
+            addSubview(webView)
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            needsLayout = true
+        }
+
+        override func layout() {
+            super.layout()
+            webView.frame = CGRect(origin: .zero, size: referenceSize)
+            guard referenceSize.width > 0, bounds.width > 0 else { return }
+            let scale = bounds.width / referenceSize.width
+            webView.layer?.anchorPoint = .zero
+            webView.layer?.position = .zero
+            webView.layer?.setAffineTransform(CGAffineTransform(scaleX: scale, y: scale))
         }
     }
 
@@ -3126,12 +3177,12 @@ struct WebPreviewView: NSViewRepresentable {
         Coordinator()
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> ScalingContainerView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.websiteDataStore = .nonPersistent()
-        let webView = PassthroughPreviewWebView(frame: .zero, configuration: configuration)
+        let webView = PassthroughPreviewWebView(frame: CGRect(origin: .zero, size: referenceSize), configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         if let internalScrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first {
@@ -3139,10 +3190,15 @@ struct WebPreviewView: NSViewRepresentable {
             internalScrollView.hasHorizontalScroller = false
             internalScrollView.drawsBackground = false
         }
-        return webView
+        let container = ScalingContainerView(webView: webView)
+        container.referenceSize = referenceSize
+        return container
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ container: ScalingContainerView, context: Context) {
+        container.referenceSize = referenceSize
+
+        let webView = container.webView
         let targetURL = url.absoluteString
         let didChangeURL = context.coordinator.lastRequestedURL != targetURL
         let didFailCurrentURL = context.coordinator.lastFailedURL == targetURL
@@ -3168,10 +3224,10 @@ struct WebPreviewView: NSViewRepresentable {
         webView.load(request)
     }
 
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
-        webView.stopLoading()
-        webView.navigationDelegate = nil
-        webView.loadHTMLString("", baseURL: nil)
+    static func dismantleNSView(_ container: ScalingContainerView, coordinator: Coordinator) {
+        container.webView.stopLoading()
+        container.webView.navigationDelegate = nil
+        container.webView.loadHTMLString("", baseURL: nil)
     }
 }
 
