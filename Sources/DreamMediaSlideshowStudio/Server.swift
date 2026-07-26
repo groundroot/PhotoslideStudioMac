@@ -20,7 +20,6 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
     private lazy var projectHTMLTemplate: String = Self.loadResource(named: "gallery-monument", withExtension: "html")
     private lazy var projectStylesheetData: Data = Self.loadResourceData(named: "gallery-monument", withExtension: "css")
     private lazy var projectScriptData: Data = Self.loadResourceData(named: "gallery-monument", withExtension: "js")
-    private lazy var projectWebGLScriptData: Data = Self.loadResourceData(named: "webgl-transition-engine", withExtension: "js")
 
     @MainActor
     init(projectStore: ProjectStore) {
@@ -43,7 +42,6 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
         _ = projectHTMLTemplate
         _ = projectStylesheetData
         _ = projectScriptData
-        _ = projectWebGLScriptData
 
         do {
             let nwPort = NWEndpoint.Port(rawValue: port) ?? 8787
@@ -173,8 +171,6 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
             return landingPage()
         case "/static/gallery-monument.css":
             return .binary(projectStylesheetData, contentType: "text/css; charset=utf-8", cacheControl: "no-store, max-age=0")
-        case "/static/webgl-transition-engine.js":
-            return .binary(projectWebGLScriptData, contentType: "application/javascript; charset=utf-8", cacheControl: "no-store, max-age=0")
         case "/static/gallery-monument.js":
             return .binary(projectScriptData, contentType: "application/javascript; charset=utf-8", cacheControl: "no-store, max-age=0")
         default:

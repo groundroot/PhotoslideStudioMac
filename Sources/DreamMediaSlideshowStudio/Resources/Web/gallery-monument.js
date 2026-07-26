@@ -33,8 +33,6 @@ const slides = [
   document.getElementById("slideA"),
   document.getElementById("slideB")
 ];
-const gpuTransitionLayer = document.getElementById("gpuTransitionLayer");
-const gpuTransitionEngine = window.DreamGPUTransitions?.create(gpuTransitionLayer) || null;
 const fxLayers = {
   "floating-particles": document.getElementById("fxParticles"),
   "light-leaks": document.getElementById("fxLightLeaks"),
@@ -1105,12 +1103,6 @@ function ensureVideoReady(element, item) {
   });
 }
 
-function canUseGPUTransition(currentContext, nextContext) {
-  // Keep transitions on the DOM/CSS path for stability.
-  // GPU media-only transitions desync with DOM overlay/logo updates and were causing broken dissolve output.
-  return false;
-}
-
 function resetSlide(slide) {
   slide.getAnimations?.().forEach((animation) => animation.cancel());
   slide.classList.remove("is-active", "is-entering", "is-leaving");
@@ -1338,7 +1330,6 @@ function clearPlaybackTimer() {
 function clearTimers() {
   clearPlaybackTimer();
   window.clearTimeout(state.refreshTimer);
-  gpuTransitionEngine?.cancel?.();
 }
 
 function startMediaPlaybackForSlide(slide, item) {
@@ -1640,34 +1631,6 @@ async function runTransition(token) {
     return;
   }
 
-  if (canUseGPUTransition(state.activeContext, nextContext)) {
-    try {
-      await gpuTransitionEngine.transition({
-        fromImage: state.activeContext.asset,
-        toImage: nextContext.asset,
-        effect: transitionKey,
-        durationMs: timing.transitionMs,
-        fitMode: item.mediaFitMode || "fill"
-      });
-    } catch (_) {
-    }
-
-    if (token !== state.playbackToken) {
-      return;
-    }
-
-    resetSlide(outgoingSlide);
-    incomingSlide.classList.add("is-active");
-    startMediaPlaybackForSlide(incomingSlide, item);
-    state.activeSlot = (state.activeSlot + 1) % slides.length;
-    state.activeContext = { ...nextContext, timing };
-    updateFocusDebugMarker(event, item);
-    pruneAssetCache();
-    scheduleAdvance(token, timing.advanceMs);
-    warmNextItem();
-    return;
-  }
-
   const crossfadeCompleted = await performTransition(outgoingSlide, incomingSlide, timing, token, transitionKey);
   if (!crossfadeCompleted) {
     return;
@@ -1689,7 +1652,6 @@ function startPlayback() {
   const token = state.playbackToken;
   clearPlaybackTimer();
   hideYouTubeLayer();
-  gpuTransitionEngine?.cancel?.();
   document.documentElement.style.setProperty("--target-frame-ms", `${1000 / TARGET_FPS}ms`);
   window.__dreamSlideshow.phase = "playback";
   showInitialSlide(token);

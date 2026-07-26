@@ -69,25 +69,9 @@ body {
 .slideshow__track,
 .slide,
 .slide__media,
-.fx,
-.gpu-transition-layer {
+.fx {
   position: absolute;
   inset: 0;
-}
-
-.gpu-transition-layer {
-  /* canvas는 대체 요소라 inset: 0만으로는 늘어나지 않는다(기본 300x150 유지).
-     명시적 크기를 줘야 트랜지션 렌더링이 화면 전체를 덮는다. */
-  width: 100%;
-  height: 100%;
-  z-index: 4;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 160ms ease;
-}
-
-.gpu-transition-layer.is-active {
-  opacity: 1;
 }
 
 .background-audio {
