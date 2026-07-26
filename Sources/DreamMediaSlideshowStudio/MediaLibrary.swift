@@ -139,6 +139,19 @@ enum MediaLibrary {
         let requiresFocusPoint = event.kind == .photo
             && event.imageMotionEffect == .kenBurns
             && event.kenBurnsFocusMode == .subject
+
+        // 얼굴 인식은 장당 수십~수백 ms(인텔은 CPU 폴백로 더 느림)라 직렬로
+        // 돌리면 첫 요청이 사진 수에 비례해 길어진다. 캐시 미스 분을 병렬로
+        // 미리 채워두면 아래 map은 캐시 히트로 즉시 통과한다.
+        if requiresFocusPoint {
+            let photoURLs = entries.filter { $0.kind == .image && $0.fileURL.isFileURL }.map(\.fileURL)
+            if photoURLs.count > 1 {
+                DispatchQueue.concurrentPerform(iterations: photoURLs.count) { index in
+                    _ = focusPoint(for: photoURLs[index], kind: .image)
+                }
+            }
+        }
+
         let items = entries.map { entry in
             MediaPlaylistItem(
                 kind: entry.kind,
@@ -461,8 +474,25 @@ enum MediaLibrary {
     }
 
     private static func detectFaceFocus(for fileURL: URL) -> MediaFocusPoint? {
+        // 얼굴 박스는 정규화 좌표라 다운스케일해도 결과가 같다. 원본(수천만
+        // 화소) 전체 디코딩이 인텔맥(Vision CPU 폴백)에서 병목이라 장변
+        // 1024px 썸네일로 인식한다. Transform 옵션으로 EXIF 회전을 픽셀에
+        // 반영해, 브라우저가 회전 적용해 그리는 좌표계와도 일치시킨다.
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions) else {
+            return nil
+        }
+        let thumbnailOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1024
+        ] as [CFString: Any] as CFDictionary
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else {
+            return nil
+        }
+
         let request = VNDetectFaceRectanglesRequest()
-        let handler = VNImageRequestHandler(url: fileURL)
+        let handler = VNImageRequestHandler(cgImage: thumbnail)
 
         do {
             try handler.perform([request])
