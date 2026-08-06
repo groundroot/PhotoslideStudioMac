@@ -9,7 +9,7 @@ DIST_DIR="$ROOT_DIR/dist"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-ICON_SOURCE="$ROOT_DIR/../assets/AppIcon.icns"
+ICON_SOURCE="$ROOT_DIR/assets/AppIcon.icns"
 XCODE_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
 VERSION_FILE="$ROOT_DIR/VERSION"
 SCRATCH_DIR="$ROOT_DIR/.swiftpm-build"
@@ -161,9 +161,15 @@ EOF
 chmod +x "$MACOS_DIR/$APP_NAME"
 require_universal_binary "$EXECUTABLE_PATH" "$APP_NAME"
 
-if security find-identity -v -p codesigning | rg -q 'HWP Converter Local Code Signing'; then
-  codesign --force --deep --sign "HWP Converter Local Code Signing" "$APP_DIR" >/dev/null 2>&1 || true
+# Developer ID 서명 (다른 Mac 배포 시 Gatekeeper 마찰 최소화). 없으면 ad-hoc 폴백.
+# 공증(notarization)은 별도: xcrun notarytool store-credentials 후 submit — APPSTORE.md 참고.
+DEV_ID_IDENTITY="$( { security find-identity -v -p codesigning | grep -m1 'Developer ID Application' || true; } \
+  | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]+[0-9A-F]+[[:space:]]+"(.*)"$/\1/' )"
+if [[ -n "$DEV_ID_IDENTITY" ]]; then
+  echo "서명: $DEV_ID_IDENTITY"
+  codesign --force --deep --options runtime --timestamp --sign "$DEV_ID_IDENTITY" "$APP_DIR"
 else
+  echo "서명: ad-hoc (Developer ID Application 인증서 없음)"
   codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
 fi
 
