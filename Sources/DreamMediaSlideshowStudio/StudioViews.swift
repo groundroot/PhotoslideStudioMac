@@ -1539,9 +1539,10 @@ struct ProjectWorkspaceView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .disabled(browserPreviewURL == nil)
+                        .accessibilityLabel(String(localized: "브라우저 뷰 URL 복사"))
                     }
                 }
-                AddressField(title: "OptiSigns URL", value: presentationURL?.absoluteString ?? "", showsValue: false, actionTitle: String(localized: "복사")) {
+                AddressField(title: "OptiSigns URL", value: presentationURL?.absoluteString ?? "", showsValue: false, actionTitle: String(localized: "복사"), actionAccessibilityLabel: String(localized: "OptiSigns URL 복사")) {
                     copyPresentationURL()
                 }
                 Text("브라우저 뷰에는 전체화면 버튼과 프리뷰용 뮤트 설정이 적용되고, OptiSigns URL에서는 버튼이 숨겨집니다.")
@@ -2366,6 +2367,14 @@ struct SidebarProjectRow: View {
                 action()
             }
         }
+        // 이름 변경 중에는 텍스트필드가 개별 요소로 남아야 하므로 병합하지 않는다.
+        .accessibilityElement(children: isRenaming ? .contain : .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction {
+            if !isSelected {
+                action()
+            }
+        }
         .onChange(of: nameFieldFocused) { focused in
             if !focused && isRenaming {
                 commitProjectName()
@@ -2470,6 +2479,14 @@ struct WorkspaceEventRow: View {
         .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
         .onTapGesture {
             // 선택된 행에서는 탭이 편집 필드/연필 클릭을 방해하지 않도록 한다.
+            if !isSelected {
+                action()
+            }
+        }
+        // 이름 변경 중에는 텍스트필드가 개별 요소로 남아야 하므로 병합하지 않는다.
+        .accessibilityElement(children: isRenaming ? .contain : .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction {
             if !isSelected {
                 action()
             }
@@ -2827,7 +2844,17 @@ struct ColorPaletteField: View {
     let title: String
     @Binding var colorHex: String
 
-    private let swatches = ["#FFFFFF", "#121212", "#2F2F2F", "#6B7280", "#B91C1C", "#1D4ED8", "#0F766E", "#9333EA", "#D97706"]
+    private let swatches: [(hex: String, name: String)] = [
+        ("#FFFFFF", String(localized: "흰색")),
+        ("#121212", String(localized: "검정")),
+        ("#2F2F2F", String(localized: "진회색")),
+        ("#6B7280", String(localized: "회색")),
+        ("#B91C1C", String(localized: "빨강")),
+        ("#1D4ED8", String(localized: "파랑")),
+        ("#0F766E", String(localized: "청록")),
+        ("#9333EA", String(localized: "보라")),
+        ("#D97706", String(localized: "주황"))
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2836,19 +2863,24 @@ struct ColorPaletteField: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
-                ForEach(swatches, id: \.self) { swatch in
+                ForEach(swatches, id: \.hex) { swatch in
+                    let isSelected = colorHex.caseInsensitiveCompare(swatch.hex) == .orderedSame
                     Button {
-                        colorHex = swatch
+                        colorHex = swatch.hex
                     } label: {
                         Circle()
-                            .fill(Color(hex: swatch))
+                            .fill(Color(hex: swatch.hex))
                             .frame(width: 22, height: 22)
                             .overlay(
                                 Circle()
-                                    .stroke(colorHex.caseInsensitiveCompare(swatch) == .orderedSame ? Color.primary : Color.primary.opacity(0.16), lineWidth: colorHex.caseInsensitiveCompare(swatch) == .orderedSame ? 2 : 1)
+                                    .stroke(isSelected ? Color.primary : Color.primary.opacity(0.16), lineWidth: isSelected ? 2 : 1)
                             )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(swatch.name)
+                    .accessibilityValue(swatch.hex)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .help("\(swatch.name) \(swatch.hex)")
                 }
             }
 
@@ -2997,13 +3029,15 @@ struct AddressField: View {
     let value: String
     let showsValue: Bool
     let actionTitle: String?
+    let actionAccessibilityLabel: String?
     let action: (() -> Void)?
 
-    init(title: String, value: String, showsValue: Bool = true, actionTitle: String? = nil, action: (() -> Void)? = nil) {
+    init(title: String, value: String, showsValue: Bool = true, actionTitle: String? = nil, actionAccessibilityLabel: String? = nil, action: (() -> Void)? = nil) {
         self.title = title
         self.value = value
         self.showsValue = showsValue
         self.actionTitle = actionTitle
+        self.actionAccessibilityLabel = actionAccessibilityLabel
         self.action = action
     }
 
@@ -3018,6 +3052,7 @@ struct AddressField: View {
                     Button(actionTitle, action: action)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .accessibilityLabel(actionAccessibilityLabel ?? actionTitle)
                 }
             }
             if showsValue {
