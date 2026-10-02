@@ -608,8 +608,19 @@ struct ProjectWorkspaceView: View {
         ].joined(separator: "|")
     }
 
+    /// 앱 안 프리뷰 전용 — 루프백이라 네트워크 상태와 무관하게 항상 뜬다.
     private var browserPreviewURL: URL? {
-        guard let baseURL = server.previewURL(for: project),
+        browserViewURL(host: "127.0.0.1")
+    }
+
+    /// "보기"·"복사"용 — 같은 네트워크의 다른 맥 크롬에 붙여넣어도 열리도록
+    /// 루프백이 아닌 LAN 주소를 쓴다. LAN 주소가 없으면 루프백으로 떨어진다.
+    private var sharedBrowserViewURL: URL? {
+        browserViewURL(host: server.presentationHost)
+    }
+
+    private func browserViewURL(host: String) -> URL? {
+        guard let baseURL = server.url(for: project, host: host, viewMode: "browser"),
               var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
@@ -638,6 +649,13 @@ struct ProjectWorkspaceView: View {
 
     private var presentationURL: URL? {
         server.presentationURL(for: project)
+    }
+
+    private var presentationHostSelection: Binding<String> {
+        Binding(
+            get: { server.presentationHost },
+            set: { server.selectPresentationHost($0) }
+        )
     }
 
     var body: some View {
@@ -1520,6 +1538,18 @@ struct ProjectWorkspaceView: View {
     private var linkCard: some View {
         WorkspaceCard(title: "Links", subtitle: String(localized: "브라우저 뷰와 OptiSigns용 주소입니다.")) {
             VStack(alignment: .leading, spacing: 14) {
+                Picker(selection: presentationHostSelection) {
+                    ForEach(server.hostOptions) { option in
+                        Text(option.label).tag(option.address)
+                    }
+                } label: {
+                    Text("접속 주소")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .pickerStyle(.menu)
+                .disabled(server.hostOptions.count < 2)
+
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("브라우저 뷰 URL")
@@ -1531,21 +1561,30 @@ struct ProjectWorkspaceView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(browserPreviewURL == nil)
+                        .disabled(sharedBrowserViewURL == nil)
 
                         Button("복사") {
                             copyPreviewURL()
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(browserPreviewURL == nil)
+                        .disabled(sharedBrowserViewURL == nil)
                         .accessibilityLabel(String(localized: "브라우저 뷰 URL 복사"))
                     }
+                    Text(sharedBrowserViewURL?.absoluteString ?? "")
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 AddressField(title: "OptiSigns URL", value: presentationURL?.absoluteString ?? "", showsValue: false, actionTitle: String(localized: "복사"), actionAccessibilityLabel: String(localized: "OptiSigns URL 복사")) {
                     copyPresentationURL()
                 }
                 Text("브라우저 뷰에는 전체화면 버튼과 프리뷰용 뮤트 설정이 적용되고, OptiSigns URL에서는 버튼이 숨겨집니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("보는 쪽 맥이 같은 서브넷이 아니면 Tailscale 주소를 고르세요. Tailscale 주소는 맥을 껐다 켜도 바뀌지 않습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1567,9 +1606,9 @@ struct ProjectWorkspaceView: View {
     }
 
     private func copyPreviewURL() {
-        guard let browserPreviewURL else { return }
+        guard let sharedBrowserViewURL else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(browserPreviewURL.absoluteString, forType: .string)
+        NSPasteboard.general.setString(sharedBrowserViewURL.absoluteString, forType: .string)
     }
 
     private func formattedPercent(_ value: Double) -> String {
@@ -1581,8 +1620,8 @@ struct ProjectWorkspaceView: View {
     }
 
     private func openPreviewURL() {
-        guard let browserPreviewURL else { return }
-        NSWorkspace.shared.open(browserPreviewURL)
+        guard let sharedBrowserViewURL else { return }
+        NSWorkspace.shared.open(sharedBrowserViewURL)
     }
 
     @ViewBuilder

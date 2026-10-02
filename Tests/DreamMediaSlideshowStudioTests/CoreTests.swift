@@ -113,3 +113,75 @@ final class ProjectModelTests: XCTestCase {
         XCTAssertEqual(decoded.events[0].overlayOffsetY, 0)
     }
 }
+
+final class HostAddressResolverTests: XCTestCase {
+    /// 실제 이 개발 맥 구성: Wi-Fi + 유선 어댑터(다른 서브넷) + Tailscale + AirDrop.
+    private let interfaces = [
+        ("utun9", "100.96.130.54"),
+        ("en0", "192.168.0.173"),
+        ("awdl0", "169.254.31.7"),
+        ("en8", "10.0.0.203")
+    ]
+
+    func testAirDropAndVirtualInterfacesAreHidden() {
+        for name in ["awdl0", "llw0", "bridge100", "vmnet1", "ap1"] {
+            XCTAssertTrue(HostAddressResolver.isHidden(interfaceName: name), name)
+        }
+        for name in ["en0", "en8", "utun9"] {
+            XCTAssertFalse(HostAddressResolver.isHidden(interfaceName: name), name)
+        }
+    }
+
+    func testTailscaleIsOfferedButRankedBelowPhysicalInterfaces() {
+        let options = HostAddressResolver.sortedOptions(interfaces)
+        XCTAssertEqual(options.map(\.address), ["192.168.0.173", "10.0.0.203", "100.96.130.54"])
+        XCTAssertEqual(options.map(\.kind), [.lan, .lan, .tailscale])
+    }
+
+    func testOptionOrderIsIndependentOfEnumerationOrder() {
+        let shuffled = [interfaces[3], interfaces[1], interfaces[2], interfaces[0]]
+        XCTAssertEqual(
+            HostAddressResolver.sortedOptions(interfaces).map(\.address),
+            HostAddressResolver.sortedOptions(shuffled).map(\.address)
+        )
+    }
+
+    func testTailscaleRangeDetection() {
+        XCTAssertTrue(HostAddressResolver.isTailscaleAddress("100.96.130.54"))
+        XCTAssertTrue(HostAddressResolver.isTailscaleAddress("100.64.0.1"))
+        XCTAssertFalse(HostAddressResolver.isTailscaleAddress("100.128.0.1"))
+        XCTAssertFalse(HostAddressResolver.isTailscaleAddress("100.63.0.1"))
+        XCTAssertFalse(HostAddressResolver.isTailscaleAddress("10.0.0.203"))
+    }
+
+    func testChosenHostSurvivesRestartWhileAddressExists() {
+        let candidates = ["192.168.0.173", "10.0.0.203", "100.96.130.54", "127.0.0.1"]
+        for chosen in candidates {
+            XCTAssertEqual(
+                HostAddressResolver.preferredPresentationHost(remembered: chosen, candidates: candidates),
+                chosen
+            )
+        }
+    }
+
+    func testChosenHostIsReplacedOnlyWhenItDisappears() {
+        XCTAssertEqual(
+            HostAddressResolver.preferredPresentationHost(
+                remembered: "10.0.0.203",
+                candidates: ["192.168.0.173", "127.0.0.1"]
+            ),
+            "192.168.0.173"
+        )
+    }
+
+    func testChosenHostIsKeptWhileNetworkIsStillComingUp() {
+        XCTAssertEqual(
+            HostAddressResolver.preferredPresentationHost(remembered: "100.96.130.54", candidates: ["127.0.0.1"]),
+            "100.96.130.54"
+        )
+        XCTAssertEqual(
+            HostAddressResolver.preferredPresentationHost(remembered: nil, candidates: ["127.0.0.1"]),
+            "127.0.0.1"
+        )
+    }
+}

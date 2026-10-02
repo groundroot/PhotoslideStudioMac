@@ -5,8 +5,11 @@ import Network
 
 final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
     @Published private(set) var isRunning = false
-    @Published private(set) var availableHosts: [String] = ["127.0.0.1"]
+    @Published private(set) var hostOptions: [ServerHostOption] = [.loopback]
+    @Published private(set) var presentationHost: String = ServerHostOption.loopback.address
     @Published private(set) var port: UInt16 = 8787
+
+    static let presentationHostDefaultsKey = "server.presentationHost"
 
     var portDescription: String {
         "Port \(port)"
@@ -86,13 +89,8 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
         }
     }
 
-    func previewURL(for project: SlideshowProject) -> URL? {
-        url(for: project, host: "127.0.0.1", viewMode: "browser")
-    }
-
     func presentationURL(for project: SlideshowProject) -> URL? {
-        let host = availableHosts.first(where: { $0 != "127.0.0.1" }) ?? "127.0.0.1"
-        return url(for: project, host: host, viewMode: "signage")
+        url(for: project, host: presentationHost, viewMode: "signage")
     }
 
     func url(for project: SlideshowProject, host: String, viewMode: String? = nil) -> URL? {
@@ -108,9 +106,30 @@ final class LocalSlideshowServer: ObservableObject, @unchecked Sendable {
         return components.url
     }
 
+    /// 사용자가 고른 주소로 URL을 만든다. 보는 쪽 기기가 어느 망에 있느냐에 따라
+    /// 같은 서브넷 주소, Tailscale 주소 중 무엇이 닿는지가 달라지므로 앱이 정할 수 없다.
+    func selectPresentationHost(_ address: String) {
+        guard hostOptions.contains(where: { $0.address == address }) else { return }
+        presentationHost = address
+        UserDefaults.standard.set(address, forKey: Self.presentationHostDefaultsKey)
+    }
+
     private func refreshAvailableHosts() {
-        let hosts = ["127.0.0.1"] + HostAddressResolver.localIPv4Addresses()
-        availableHosts = Array(NSOrderedSet(array: hosts)) as? [String] ?? hosts
+        let options = HostAddressResolver.localHostOptions() + [.loopback]
+        hostOptions = options
+
+        // 맥을 껐다 켜도 주소가 그대로여야 한다. 마지막으로 안내한 주소를 저장해
+        // 두고, 그 주소가 아직 살아 있으면 계속 같은 주소를 쓴다.
+        let defaults = UserDefaults.standard
+        let remembered = defaults.string(forKey: Self.presentationHostDefaultsKey)
+        let host = HostAddressResolver.preferredPresentationHost(
+            remembered: remembered,
+            candidates: options.map(\.address)
+        )
+        presentationHost = host
+        if host != ServerHostOption.loopback.address, host != remembered {
+            defaults.set(host, forKey: Self.presentationHostDefaultsKey)
+        }
     }
 
     private func handle(connection: NWConnection) {
@@ -1056,13 +1075,103 @@ private struct InstalledFontSource {
     let fileURL: URL
 }
 
-private enum HostAddressResolver {
-    static func localIPv4Addresses() -> [String] {
-        var addresses: [String] = []
+/// 슬라이드쇼 주소로 안내할 수 있는 이 맥의 IPv4 주소 하나.
+struct ServerHostOption: Identifiable, Hashable {
+    enum Kind: Int, Hashable {
+        /// 같은 서브넷에 있는 기기가 바로 붙을 수 있는 유선/무선 주소.
+        case lan = 0
+        /// Tailscale(100.64.0.0/10). 서브넷이 달라도, 밖에 나가 있어도 붙는다.
+        case tailscale = 1
+        /// 그 밖의 VPN·터널 인터페이스.
+        case vpn = 2
+        /// 이 맥 안에서만.
+        case loopback = 3
+    }
+
+    let address: String
+    let interfaceName: String
+    let kind: Kind
+
+    var id: String { address }
+
+    static let loopback = ServerHostOption(address: "127.0.0.1", interfaceName: "lo0", kind: .loopback)
+
+    var label: String {
+        switch kind {
+        case .lan: return String(localized: "같은 네트워크") + " · \(address)"
+        case .tailscale: return "Tailscale · \(address)"
+        case .vpn: return "VPN · \(address)"
+        case .loopback: return String(localized: "이 맥에서만") + " · \(address)"
+        }
+    }
+}
+
+enum HostAddressResolver {
+    /// AirDrop(awdl/llw/ap)·인터넷 공유(bridge)·가상머신(vmnet) 인터페이스는
+    /// 슬라이드쇼 주소로 쓸 일이 없어 목록에서 아예 뺀다.
+    private static let hiddenInterfacePrefixes = [
+        "awdl", "llw", "ap", "anpi", "bridge", "vmnet", "vnic"
+    ]
+
+    /// VPN·터널 인터페이스. 서브넷이 다른 기기나 외부에서 접속할 때 쓸 수 있으니
+    /// 목록에는 남기고, 물리 인터페이스보다 뒤로만 민다.
+    private static let tunnelInterfacePrefixes = [
+        "utun", "ipsec", "ppp", "gif", "stf", "tap", "tun"
+    ]
+
+    static func isHidden(interfaceName: String) -> Bool {
+        hiddenInterfacePrefixes.contains { interfaceName.hasPrefix($0) }
+    }
+
+    /// Tailscale은 CGNAT 대역(100.64.0.0/10)에서 기기마다 고정 주소를 준다.
+    static func isTailscaleAddress(_ address: String) -> Bool {
+        let octets = address.split(separator: ".").compactMap { UInt8($0) }
+        guard octets.count == 4 else { return false }
+        return octets[0] == 100 && (64...127).contains(octets[1])
+    }
+
+    static func kind(interfaceName: String, address: String) -> ServerHostOption.Kind {
+        if isTailscaleAddress(address) { return .tailscale }
+        if tunnelInterfacePrefixes.contains(where: { interfaceName.hasPrefix($0) }) { return .vpn }
+        return .lan
+    }
+
+    /// getifaddrs가 돌려주는 순서는 부팅마다 달라진다. 종류 → 인터페이스 이름 →
+    /// 주소 순으로 결정적 정렬해, 구성이 같으면 항상 같은 목록·같은 첫 번째가 되게 한다.
+    static func sortedOptions(_ candidates: [(name: String, address: String)]) -> [ServerHostOption] {
+        candidates
+            .filter { !isHidden(interfaceName: $0.name) }
+            .map {
+                ServerHostOption(
+                    address: $0.address,
+                    interfaceName: $0.name,
+                    kind: kind(interfaceName: $0.name, address: $0.address)
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.kind != rhs.kind { return lhs.kind.rawValue < rhs.kind.rawValue }
+                if lhs.interfaceName != rhs.interfaceName { return lhs.interfaceName < rhs.interfaceName }
+                return lhs.address < rhs.address
+            }
+    }
+
+    /// 고른 주소가 아직 살아 있으면 그대로 유지한다 — 맥을 껐다 켜도 URL이 안 바뀌게.
+    /// 없어졌을 때만 새로 고르고, 네트워크가 아직 안 올라왔으면 마지막 주소를 계속 보여준다.
+    static func preferredPresentationHost(remembered: String?, candidates: [String]) -> String {
+        if let remembered, candidates.contains(remembered) { return remembered }
+        if let firstNetwork = candidates.first(where: { $0 != ServerHostOption.loopback.address }) {
+            return firstNetwork
+        }
+        return remembered ?? ServerHostOption.loopback.address
+    }
+
+    /// 루프백을 뺀, 이 맥의 IPv4 주소 목록.
+    static func localHostOptions() -> [ServerHostOption] {
+        var candidates: [(name: String, address: String)] = []
         var pointer: UnsafeMutablePointer<ifaddrs>?
 
         guard getifaddrs(&pointer) == 0, let firstAddress = pointer else {
-            return addresses
+            return []
         }
 
         defer { freeifaddrs(pointer) }
@@ -1074,6 +1183,7 @@ private enum HostAddressResolver {
             let addressFamily = interfaceAddress.pointee.sa_family
             guard addressFamily == UInt8(AF_INET) else { continue }
             guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0 else { continue }
+            let interfaceName = String(cString: interface.pointee.ifa_name)
 
             var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             getnameinfo(
@@ -1088,10 +1198,10 @@ private enum HostAddressResolver {
             let addressBytes = hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
             let address = String(decoding: addressBytes, as: UTF8.self)
             if !address.isEmpty {
-                addresses.append(address)
+                candidates.append((interfaceName, address))
             }
         }
 
-        return addresses
+        return sortedOptions(candidates)
     }
 }
